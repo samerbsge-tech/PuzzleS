@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>العالم المقلوب - Shift Gravity</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            background-color: #0d0f18;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 30px rgba(0, 242, 254, 0.2);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #1a2236;
+        }
+        canvas {
+            display: block;
+            background: #05070c;
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 15px 20px;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(13, 15, 24, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 10px 18px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .stat-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: bold;
+        }
+        .stat-label {
+            color: #8a99ad;
+            font-size: 13px;
+        }
+        .battery-container {
+            display: flex;
+            gap: 5px;
+        }
+        .battery-cell {
+            width: 12px;
+            height: 20px;
+            background: #00f2fe;
+            border-radius: 3px;
+            box-shadow: 0 0 8px #00f2fe;
+            transition: all 0.2s ease;
+        }
+        .battery-cell.empty {
+            background: #2a354d;
+            box-shadow: none;
+        }
+        /* شاشات الحالات (بداية / فوز / خسارة) */
+        .modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 7, 12, 0.92);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            pointer-events: auto;
+            gap: 12px;
+            padding: 20px;
+        }
+        .modal h1 {
+            font-size: 32px;
+            color: #00f2fe;
+            text-shadow: 0 0 15px rgba(0, 242, 254, 0.5);
+        }
+        .modal p {
+            color: #b0c4de;
+            max-width: 85%;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            width: 80%;
+            max-width: 320px;
+            text-align: right;
+        }
+        .form-group label {
+            font-size: 14px;
+            color: #00f2fe;
+            font-weight: bold;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: 1px solid #2a354d;
+            background: #0f1422;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+        }
+        .form-control:focus {
+            border-color: #00f2fe;
+            box-shadow: 0 0 8px rgba(0, 242, 254, 0.4);
+        }
+        .radio-group {
+            display: flex;
+            gap: 15px;
+            width: 100%;
+            justify-content: space-between;
+        }
+        .radio-option {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .range-slider {
+            width: 100%;
+            accent-color: #00f2fe;
+        }
+        .btn {
+            background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+            color: #000;
+            border: none;
+            padding: 12px 36px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.6);
+        }
+        .gate-status {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .gate-locked { background: #ff4757; color: #fff; }
+        .gate-open { background: #2ed573; color: #000; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="500"></canvas>
+        
+        <div id="ui-overlay">
+            <div class="top-bar">
+                <div class="stat-box">
+                    <span class="stat-label">اللاعب:</span>
+                    <span id="display-player-name" style="color:#00f2fe;">بطل</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">الشحنات:</span>
+                    <div class="battery-container" id="battery"></div>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">الكريستالات:</span>
+                    <span id="crystals-count">0 / 5</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">البوابة:</span>
+                    <span id="gate-status-badge" class="gate-status gate-locked">مغلقة (&gt;50%)</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">الوقت:</span>
+                    <span id="timer" style="color: #ff4757;">45</span>s
+                </div>
+            </div>
+        </div>
+
+        <!-- الشاشة الرئيسية -->
+        <div id="start-screen" class="modal">
+            <h1>العالم المقلوب</h1>
+            <p>قم بإعداد خيارات المهمة للهروب من المحطة الفضائية قبل انفجارها.</p>
+            
+            <div class="form-group">
+                <label>اسم اللاعب:</label>
+                <input type="text" id="player-name-input" class="form-control" value="مستكشف الفضاء" maxlength="15">
+            </div>
+
+            <div class="form-group">
+                <label>سرعة حركة الكرة (اللاعب): <span id="speed-val" style="color:#fff;">متوسطة (1.0x)</span></label>
+                <input type="range" id="speed-slider" class="range-slider" min="0.6" max="1.6" step="0.2" value="1.0">
+            </div>
+
+            <div class="form-group">
+                <label>مستوى الصعوبة:</label>
+                <div class="radio-group">
+                    <label class="radio-option"><input type="radio" name="difficulty" value="easy"> سهل</label>
+                    <label class="radio-option"><input type="radio" name="difficulty" value="medium" checked> متوسط</label>
+                    <label class="radio-option"><input type="radio" name="difficulty" value="hard"> صعب</label>
+                </div>
+            </div>
+
+            <button class="btn" onclick="startGame()">ابدأ اللعب</button>
+        </div>
+
+        <!-- شاشة الخسارة -->
+        <div id="game-over-screen" class="modal hidden">
+            <h1 style="color: #ff4757;">فشلت المهمة</h1>
+            <p id="game-over-msg">تدمرت المحطة بالكامل أو سقطت في الفراغ!</p>
+            <button class="btn" onclick="showMainMenu()">القائمة الرئيسية</button>
+        </div>
+
+        <!-- شاشة الفوز -->
+        <div id="win-screen" class="modal hidden">
+            <h1 style="color: #2ed573;">مبروك النصر!</h1>
+            <p>أحسنت يا <span id="win-player-name" style="color:#00f2fe;"></span>! نجحت في الوصول لبوابة الهروب بنجاح.</p>
+            <p>النقاط الإجمالية: <span id="final-score" style="color:#00f2fe; font-weight:bold;">0</span></p>
+            <button class="btn" onclick="showMainMenu()">القائمة الرئيسية</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // حالة اللعبة والإعدادات
+        let gameState = 'START';
+        let playerName = 'مستكشف الفضاء';
+        let speedMultiplier = 1.0;
+        let difficulty = 'medium';
+        let score = 0;
+        let collectedCrystals = 0;
+        const totalCrystals = 5;
+        let timeLeft = 45;
+        let timerInterval = null;
+
+        const GRAVITY_TYPES = {
+            DOWN:  { x: 0,  y: 0.4, label: '⬇️ أسفل' },
+            UP:    { x: 0,  y: -0.4, label: '⬆️ أعلى' },
+            LEFT:  { x: -0.4, y: 0, label: '⬅️ يسار' },
+            RIGHT: { x: 0.4,  y: 0, label: '➡️ يمين' }
+        };
+        let currentGravity = GRAVITY_TYPES.DOWN;
+
+        const player = {
+            x: 50,
+            y: 400,
+            width: 22,
+            height: 22,
+            vx: 0,
+            vy: 0,
+            charges: 3,
+            maxCharges: 3,
+            isGrounded: false,
+            color: '#00f2fe'
+        };
+
+        let platforms = [];
+        let lasers = [];
+        let crystals = [];
+        let exitGate = { x: 720, y: 400, width: 40, height: 50, isOpen: false };
+
+        // تحديث النص عند تغيير السلايدر
+        document.getElementById('speed-slider').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            let txt = "متوسطة (1.0x)";
+            if (val < 1.0) txt = "بطيئة (0.6x)";
+            if (val > 1.0) txt = `سريعة (${val}x)`;
+            document.getElementById('speed-val').innerText = txt;
+        });
+
+        function initLevel() {
+            // ضبط الصعوبة
+            if (difficulty === 'easy') {
+                timeLeft = 60;
+                player.maxCharges = 4;
+            } else if (difficulty === 'medium') {
+                timeLeft = 45;
+                player.maxCharges = 3;
+            } else if (difficulty === 'hard') {
+                timeLeft = 30;
+                player.maxCharges = 2;
+            }
+            player.charges = player.maxCharges;
+
+            // بناء البطارية بناءً على الصعوبة
+            const batteryContainer = document.getElementById('battery');
+            batteryContainer.innerHTML = '';
+            for(let i=0; i<player.maxCharges; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'battery-cell';
+                batteryContainer.appendChild(cell);
+            }
+
+            platforms = [
+                { x: 0, y: 0, w: 800, h: 20 },
+                { x: 0, y: 480, w: 800, h: 20 },
+                { x: 0, y: 0, w: 20, h: 500 },
+                { x: 780, y: 0, w: 20, h: 500 },
+                { x: 100, y: 350, w: 150, h: 20 },
+                { x: 300, y: 250, w: 200, h: 20 },
+                { x: 150, y: 120, w: 180, h: 20 },
+                { x: 550, y: 380, w: 120, h: 20 },
+                { x: 520, y: 150, w: 160, h: 20 },
+                { x: 380, y: 380, w: 20, h: 100 }
+            ];
+
+            lasers = [
+                { x: 250, y: 460, w: 130, h: 20 },
+                { x: 300, y: 20, w: 150, h: 20 },
+                { x: 500, y: 170, w: 20, h: 120 }
+            ];
+
+            crystals = [
+                { x: 180, y: 310, collected: false },
+                { x: 220, y: 80, collected: false },
+                { x: 400, y: 210, collected: false },
+                { x: 600, y: 110, collected: false },
+                { x: 600, y: 340, collected: false }
+            ];
+
+            collectedCrystals = 0;
+            score = 0;
+            exitGate.isOpen = false;
+            player.x = 40;
+            player.y = 400;
+            player.vx = 0;
+            player.vy = 0;
+            currentGravity = GRAVITY_TYPES.DOWN;
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (gameState !== 'PLAYING') return;
+
+            if ((e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') && currentGravity !== GRAVITY_TYPES.DOWN) {
+                if (useCharge()) currentGravity = GRAVITY_TYPES.DOWN;
+            } else if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') && currentGravity !== GRAVITY_TYPES.UP) {
+                if (useCharge()) currentGravity = GRAVITY_TYPES.UP;
+            } else if ((e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') && currentGravity !== GRAVITY_TYPES.LEFT) {
+                if (useCharge()) currentGravity = GRAVITY_TYPES.LEFT;
+            } else if ((e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') && currentGravity !== GRAVITY_TYPES.RIGHT) {
+                if (useCharge()) currentGravity = GRAVITY_TYPES.RIGHT;
+            }
+        });
+
+        function useCharge() {
+            if (player.isGrounded) return true;
+            if (player.charges > 0) {
+                player.charges--;
+                updateUI();
+                return true;
+            }
+            return false;
+        }
+
+        function updateUI() {
+            const cells = document.querySelectorAll('.battery-cell');
+            cells.forEach((cell, index) => {
+                if (index < player.charges) cell.classList.remove('empty');
+                else cell.classList.add('empty');
+            });
+
+            document.getElementById('crystals-count').innerText = `${collectedCrystals} / ${totalCrystals}`;
+            document.getElementById('timer').innerText = timeLeft;
+
+            const badge = document.getElementById('gate-status-badge');
+            if (exitGate.isOpen) {
+                badge.innerText = "مفتوحة ✅";
+                badge.className = "gate-status gate-open";
+            } else {
+                badge.innerText = `مغلقة (${Math.ceil((collectedCrystals/totalCrystals)*100)}%)`;
+                badge.className = "gate-status gate-locked";
+            }
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            // تطبيق سرعة الحركة والجاذبية المعُدلة
+            player.vx += currentGravity.x * speedMultiplier;
+            player.vy += currentGravity.y * speedMultiplier;
+
+            player.vx *= 0.98;
+            player.vy *= 0.98;
+
+            player.x += player.vx;
+            checkCollisions('x');
+            player.y += player.vy;
+            checkCollisions('y');
+
+            // فحص التصادم بالليزر
+            for (let laser of lasers) {
+                if (rectIntersect(player, laser)) {
+                    gameOver("اصطدمت بالشعاع الحارق!");
+                    return;
+                }
+            }
+
+            // تجميع النقاط والتحقق من فتح البوابة (أكبر من 50%)
+            crystals.forEach(c => {
+                if (!c.collected && circleRectIntersect(c, 10, player)) {
+                    c.collected = true;
+                    collectedCrystals++;
+                    score += 100;
+
+                    // فتح البوابة عند جمع > 50% (3 من 5)
+                    if ((collectedCrystals / totalCrystals) > 0.5) {
+                        exitGate.isOpen = true;
+                    }
+                    updateUI();
+                }
+            });
+
+            // محاولة الهروب عند المربع الأخضر
+            if (rectIntersect(player, exitGate)) {
+                if (exitGate.isOpen) {
+                    winGame();
+                }
+            }
+        }
+
+        function checkCollisions(axis) {
+            player.isGrounded = false;
+            for (let p of platforms) {
+                if (rectIntersect(player, p)) {
+                    if (axis === 'x') {
+                        if (player.vx > 0) player.x = p.x - player.width;
+                        else if (player.vx < 0) player.x = p.x + p.w;
+                        player.vx = 0;
+                    } else if (axis === 'y') {
+                        if (player.vy > 0) player.y = p.y - player.height;
+                        else if (player.vy < 0) player.y = p.y + p.h;
+                        player.vy = 0;
+                    }
+                    player.isGrounded = true;
+                    player.charges = player.maxCharges;
+                    updateUI();
+                }
+            }
+        }
+
+        function rectIntersect(r1, r2) {
+            return !(r2.x >= r1.x + r1.width ||
+                     r2.x + r2.w <= r1.x ||
+                     r2.y >= r1.y + r1.height ||
+                     r2.y + r2.h <= r1.y);
+        }
+
+        function circleRectIntersect(circle, radius, rect) {
+            let distX = Math.abs(circle.x - rect.x - rect.width/2);
+            let distY = Math.abs(circle.y - rect.y - rect.height/2);
+            if (distX > (rect.width/2 + radius)) return false;
+            if (distY > (rect.height/2 + radius)) return false;
+            if (distX <= (rect.width/2)) return true; 
+            if (distY <= (rect.height/2)) return true;
+            let dx = distX - rect.width/2;
+            let dy = distY - rect.height/2;
+            return (dx*dx + dy*dy <= (radius*radius));
+        }
+
+        function draw() {
+            ctx.fillStyle = '#05070c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // نجوم الخلفية
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            for(let i=0; i<30; i++) {
+                ctx.fillRect((i*37)%800, (i*67)%500, 2, 2);
+            }
+
+            // رسم المنصات
+            ctx.fillStyle = '#1e293b';
+            ctx.strokeStyle = '#334155';
+            platforms.forEach(p => {
+                ctx.fillRect(p.x, p.y, p.w, p.h);
+                ctx.strokeRect(p.x, p.y, p.w, p.h);
+            });
+
+            // رسم الليزر
+            ctx.fillStyle = '#ff4757';
+            ctx.shadowColor = '#ff4757';
+            ctx.shadowBlur = 10;
+            lasers.forEach(l => ctx.fillRect(l.x, l.y, l.w, l.h));
+            ctx.shadowBlur = 0;
+
+            // رسم الكريستالات
+            crystals.forEach(c => {
+                if (!c.collected) {
+                    ctx.fillStyle = '#00f2fe';
+                    ctx.shadowColor = '#00f2fe';
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+                    ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            // رسم بوابة الهروب
+            if (exitGate.isOpen) {
+                ctx.fillStyle = '#2ed573';
+                ctx.shadowColor = '#2ed573';
+                ctx.shadowBlur = 15;
+            } else {
+                ctx.fillStyle = '#57606f';
+                ctx.shadowBlur = 0;
+            }
+            ctx.fillRect(exitGate.x, exitGate.y, exitGate.width, exitGate.height);
+            ctx.shadowBlur = 0;
+
+            ctx.fillStyle = exitGate.isOpen ? '#000' : '#fff';
+            ctx.font = '11px Tahoma';
+            ctx.fillText(exitGate.isOpen ? 'الهروب' : 'مغلق', exitGate.x + 5, exitGate.y + 28);
+
+            // رسم اللاعب (الكرة الزرقاء)
+            ctx.fillStyle = player.color;
+            ctx.shadowColor = player.color;
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(player.x + player.width/2, player.y + player.height/2, player.width/2, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                if (gameState === 'PLAYING') {
+                    timeLeft--;
+                    updateUI();
+                    if (timeLeft <= 0) {
+                        gameOver("انتهى الوقت المتاح للمهمة!");
+                    }
+                }
+            }, 1000);
+        }
+
+        function startGame() {
+            playerName = document.getElementById('player-name-input').value || 'مستكشف الفضاء';
+            speedMultiplier = parseFloat(document.getElementById('speed-slider').value);
+            difficulty = document.querySelector('input[name="difficulty"]:checked').value;
+
+            document.getElementById('display-player-name').innerText = playerName;
+
+            gameState = 'PLAYING';
+            initLevel();
+            updateUI();
+            startTimer();
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('win-screen').classList.add('hidden');
+        }
+
+        function showMainMenu() {
+            gameState = 'START';
+            clearInterval(timerInterval);
+            document.getElementById('start-screen').classList.remove('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('win-screen').classList.add('hidden');
+        }
+
+        function gameOver(reason) {
+            gameState = 'GAMEOVER';
+            clearInterval(timerInterval);
+            document.getElementById('game-over-msg').innerText = reason;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function winGame() {
+            gameState = 'WIN';
+            clearInterval(timerInterval);
+            let finalScore = score + (timeLeft * 20);
+            document.getElementById('win-player-name').innerText = playerName;
+            document.getElementById('final-score').innerText = finalScore;
+            document.getElementById('win-screen').classList.remove('hidden');
+        }
+
+        // التشغيل المبدئي
+        initLevel();
+        gameLoop();
+    </script>
+</body>
+</html>
